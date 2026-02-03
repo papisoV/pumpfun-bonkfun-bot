@@ -23,6 +23,6 @@ jobs:
 
       - name: Run Script
         env:
-          # 从 GitHub Secrets 读取变量
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
         run: python feishu_summary.py
