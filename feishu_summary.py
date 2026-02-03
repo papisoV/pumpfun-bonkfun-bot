@@ -24,27 +24,41 @@ def get_latest_pump_tokens():
             with open("last_time.txt", "r") as f:
                 last_recorded_time = int(f.read().strip())
 
-        # 3. 筛选出比上次更新的消息（真正的新消息）
+        # 3. 筛选新消息（按时间从旧到新排序，方便追加写入）
         new_txs = [tx for tx in signatures if tx['blockTime'] > last_recorded_time]
+        new_txs.sort(key=lambda x: x['blockTime']) # 排序：旧的在上，新的在下
         
         if not new_txs:
             print("没有更新的消息，跳过发送。")
             return None
 
-        # 4. 记录最新的一条时间戳供下次使用
+        # 4. 记录最新的一条时间戳（new_txs 最后一个是最新的）
         with open("last_time.txt", "w") as f:
-            f.write(str(new_txs[0]['blockTime']))
+            f.write(str(new_txs[-1]['blockTime']))
 
         # 5. 格式化北京时间消息内容
         beijing_now = (datetime.utcnow() + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M')
-        msg = f"🔔 **Pump.fun 实时上新 (北京时间: {beijing_now})**\n"
-        msg += "--------------------------------\n"
+        
+        feishu_msg = f"🔔 **Pump.fun 实时上新 ({beijing_now})**\n"
+        feishu_msg += "--------------------------------\n"
+        
+        readme_entries = f"\n### 📅 监控记录: {beijing_now}\n"
         
         for tx in new_txs:
+            # 转换单笔交易时间
             tx_time = datetime.fromtimestamp(tx['blockTime'] + 8*3600).strftime('%H:%M:%S')
-            msg += f"🕒 {tx_time} | [查看代币详情](https://solscan.io/tx/{tx['signature']})\n"
+            detail_url = f"https://solscan.io/tx/{tx['signature']}"
+            
+            # 组装飞书内容
+            feishu_msg += f"🕒 {tx_time} | [详情]({detail_url})\n"
+            # 组装 README 历史记录内容
+            readme_entries += f"- `{tx_time}` | [查看链上异动]({detail_url})\n"
         
-        return msg
+        # 6. 将记录追加写入 README.md
+        with open("README.md", "a", encoding="utf-8") as f:
+            f.write(readme_entries)
+        
+        return feishu_msg
     except Exception as e:
         print(f"执行出错: {e}")
         return None
