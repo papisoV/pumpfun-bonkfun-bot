@@ -1,0 +1,28 @@
+name: Hourly Token Report
+
+on:
+  schedule:
+    # 这里的 0 * * * * 表示每小时的 0 分触发（注意：Action 可能有几分钟延迟）
+    - cron: '0 * * * *'
+  workflow_dispatch: # 允许你在 GitHub 页面手动点击运行进行测试
+
+jobs:
+  run_summary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: pip install requests
+
+      - name: Run Script
+        env:
+          # 从 GitHub Secrets 读取变量
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+        run: python feishu_summary.py
