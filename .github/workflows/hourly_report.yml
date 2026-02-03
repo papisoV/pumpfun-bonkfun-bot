@@ -27,10 +27,10 @@ jobs:
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
         run: python feishu_summary.py
 
-      - name: Commit Last Update Time
+      - name: Commit Changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add last_time.txt
-          git commit -m "update: last seen timestamp" || echo "No changes to commit"
+          git add last_time.txt README.md
+          git commit -m "docs: update history log [skip ci]" || echo "No changes"
           git push
