@@ -1,44 +1,52 @@
 import requests
 import os
+import json
 from datetime import datetime, timedelta
 
-def get_beijing_time():
-    # GitHub Actions 默认是 UTC，加 8 小时得到北京时间
-    beijing_now = datetime.utcnow() + timedelta(hours=8)
-    return beijing_now.strftime('%Y-%m-%d %H:%M:%S')
-
-def get_latest_tokens():
-    # 使用 Pump.fun 前端 API 获取最新创建的代币
-    url = "https://frontend-api.pump.fun/coins?offset=0&limit=10&sort=created_timestamp&order=DESC"
-    try:
-        response = requests.get(url, timeout=10)
-        coins = response.json()
-        
-        time_str = get_beijing_time()
-        msg_lines = [f"📊 **Pump.fun 新币小时汇总**", f"⏰ 时间：{time_str} (北京时间)", "---"]
-        
-        for coin in coins:
-            # 格式化每个代币的信息
-            line = f"💎 **{coin['symbol']}**\n📍 地址: `{coin['mint']}`"
-            msg_lines.append(line)
-            
-        return "\n\n".join(msg_lines)
-    except Exception as e:
-        return f"❌ 获取数据失败: {e}"
-
-def send_feishu(content):
-    webhook_url = os.getenv("FEISHU_WEBHOOK")
-    if not webhook_url:
-        print("未找到 FEISHU_WEBHOOK 变量")
-        return
+def get_latest_pump_tokens():
+    # 你的 Alchemy 链接
+    rpc_url = os.getenv("SOLANA_RPC_URL")
+    beijing_time = (datetime.utcnow() + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')
     
+    # Pump.fun 的程序 ID
+    PUMP_PROGRAM_ID = "6EF8rrecthR5DkZJ4NsuA5EBcyr9eGi6KuGp6CA29fTJ"
+    
+    # 构造 Solana RPC 请求：获取 Pump.fun 最新的签名记录
     payload = {
-        "msg_type": "text",
-        "content": {"text": content}
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "getSignaturesForAddress",
+        "params": [
+            PUMP_PROGRAM_ID,
+            {"limit": 10} # 取最近10条
+        ]
     }
-    requests.post(webhook_url, json=payload)
+    
+    try:
+        response = requests.post(rpc_url, json=payload, timeout=15)
+        signatures = response.json().get('result', [])
+        
+        content = f"📊 **Alchemy 实时节点报告**\n⏰ 时间: {beijing_time}\n"
+        content += "--------------------------------\n"
+        
+        if not signatures:
+            return content + "暂时没有检测到新交易。"
+
+        # 这里我们拿到了最近的交易签名，为了简单，我们直接展示这些交易的链接
+        # 点击链接即可在 Solscan 看到具体的代币
+        for sig in signatures:
+            content += f"🕒 交易时间: {datetime.fromtimestamp(sig['blockTime'] + 8*3600).strftime('%H:%M:%S')}\n"
+            content += f"🔗 详情: `https://solscan.io/tx/{sig['signature']}`\n\n"
+            
+        return content
+    except Exception as e:
+        return f"❌ Alchemy 节点请求失败: {str(e)}"
+
+def send_to_feishu(text):
+    webhook = os.getenv("FEISHU_WEBHOOK")
+    if not webhook: return
+    requests.post(webhook, json={"msg_type": "text", "content": {"text": text}})
 
 if __name__ == "__main__":
-    summary = get_latest_tokens()
-    send_feishu(summary)
-    print("已发送至飞书")
+    report = get_latest_pump_tokens()
+    send_to_feishu(report)
