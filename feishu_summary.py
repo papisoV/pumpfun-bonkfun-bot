@@ -4,48 +4,55 @@ import json
 from datetime import datetime, timedelta
 
 def get_latest_pump_tokens():
-    # 你的 Alchemy 链接
     rpc_url = os.getenv("SOLANA_RPC_URL")
-    beijing_time = (datetime.utcnow() + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')
-    
-    # Pump.fun 的程序 ID
     PUMP_PROGRAM_ID = "6EF8rrecthR5DkZJ4NsuA5EBcyr9eGi6KuGp6CA29fTJ"
     
-    # 构造 Solana RPC 请求：获取 Pump.fun 最新的签名记录
+    # 1. 获取链上最新记录
     payload = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "getSignaturesForAddress",
-        "params": [
-            PUMP_PROGRAM_ID,
-            {"limit": 10} # 取最近10条
-        ]
+        "jsonrpc": "2.0", "id": 1, "method": "getSignaturesForAddress",
+        "params": [PUMP_PROGRAM_ID, {"limit": 10}]
     }
     
     try:
         response = requests.post(rpc_url, json=payload, timeout=15)
         signatures = response.json().get('result', [])
-        
-        content = f"📊 **Alchemy 实时节点报告**\n⏰ 时间: {beijing_time}\n"
-        content += "--------------------------------\n"
-        
-        if not signatures:
-            return content + "暂时没有检测到新交易。"
+        if not signatures: return None
 
-        # 这里我们拿到了最近的交易签名，为了简单，我们直接展示这些交易的链接
-        # 点击链接即可在 Solscan 看到具体的代币
-        for sig in signatures:
-            content += f"🕒 交易时间: {datetime.fromtimestamp(sig['blockTime'] + 8*3600).strftime('%H:%M:%S')}\n"
-            content += f"🔗 详情: `https://solscan.io/tx/{sig['signature']}`\n\n"
-            
-        return content
+        # 2. 读取上一次发送的最后一条签名的时间戳
+        last_recorded_time = 0
+        if os.path.exists("last_time.txt"):
+            with open("last_time.txt", "r") as f:
+                last_recorded_time = int(f.read().strip())
+
+        # 3. 筛选出比上次更新的消息（真正的新消息）
+        new_txs = [tx for tx in signatures if tx['blockTime'] > last_recorded_time]
+        
+        if not new_txs:
+            print("没有更新的消息，跳过发送。")
+            return None
+
+        # 4. 记录最新的一条时间戳供下次使用
+        with open("last_time.txt", "w") as f:
+            f.write(str(new_txs[0]['blockTime']))
+
+        # 5. 格式化北京时间消息内容
+        beijing_now = (datetime.utcnow() + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M')
+        msg = f"🔔 **Pump.fun 实时上新 (北京时间: {beijing_now})**\n"
+        msg += "--------------------------------\n"
+        
+        for tx in new_txs:
+            tx_time = datetime.fromtimestamp(tx['blockTime'] + 8*3600).strftime('%H:%M:%S')
+            msg += f"🕒 {tx_time} | [查看代币详情](https://solscan.io/tx/{tx['signature']})\n"
+        
+        return msg
     except Exception as e:
-        return f"❌ Alchemy 节点请求失败: {str(e)}"
+        print(f"执行出错: {e}")
+        return None
 
-def send_to_feishu(text):
+def send_to_feishu(content):
+    if not content: return
     webhook = os.getenv("FEISHU_WEBHOOK")
-    if not webhook: return
-    requests.post(webhook, json={"msg_type": "text", "content": {"text": text}})
+    requests.post(webhook, json={"msg_type": "text", "content": {"text": content}})
 
 if __name__ == "__main__":
     report = get_latest_pump_tokens()
